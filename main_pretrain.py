@@ -22,7 +22,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from models import models_semaim as models_aim
 from engines.engine_pretrain import train_one_epoch
-from datasets.datasets import ImagenetLoader
+from torchvision.datasets import CIFAR10
+# from datasets.datasets import ImagenetLoader
 import util.misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
@@ -31,12 +32,12 @@ def get_args_parser():
     parser = argparse.ArgumentParser('SemAIM pre-training', add_help=False)
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
-    parser.add_argument('--epochs', default=800, type=int)
+    parser.add_argument('--epochs', default=100, type=int)
     parser.add_argument('--accum_iter', default=1, type=int,
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
 
     # Model parameters
-    parser.add_argument('--model', default='saim_base', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='aim_base', type=str, metavar='MODEL',
                         help='Name of model to train')
     parser.add_argument('--input_size', default=224, type=int,
                         help='images input size')
@@ -86,14 +87,16 @@ def get_args_parser():
     parser.set_defaults(not_use_fp16=False)
 
     # Dataset parameters
-    parser.add_argument('--data_path', default='../imagenet', type=str, help='dataset path')
+    parser.add_argument('--data_path', default='C:/Users/ensin/OneDrive/Documenten/Universiteit/Thesis/cifar_alt', type=str, help='dataset path')
+    # parser.add_argument('--data_path', default='../imagenet', type=str, help='dataset path')
 
-    parser.add_argument('--output_dir', default='./pretrain/saim_base',
+
+    parser.add_argument('--output_dir', default='./pretrain/aim_base',
                         help='path where to save, empty for no saving')
     parser.add_argument('--log_dir', default='./output_dir', help='path where to tensorboard log')
     parser.add_argument('--saveckp_freq', default=20, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--experiment', default='exp', type=str, help='experiment name (for log)')
-    parser.add_argument('--device', default='cuda',
+    parser.add_argument('--device', default='cpu',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--resume', default='',
@@ -115,31 +118,55 @@ def get_args_parser():
 
     return parser
 
-
+# main training function
 def main(args):
+    # initialize distributed training if enabled
     misc.init_distributed_mode(args)
 
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(', ', ',\n'))
 
-    device = torch.device(args.device)
+    device = torch.device("cpu")
 
-    # fix the seed for reproducibility
+    # fix the random seed for reproducibility
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     cudnn.benchmark = True
 
-    # simple augmentation
-    transform_train = transforms.Compose([
-            transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    # Define transformations for ImageNet
+    # transform_train = transforms.Compose([
+    #         transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
+    #         transforms.RandomHorizontalFlip(),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
-    print(dataset_train)
+    # dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+    # print(dataset_train)
+
+    # Define transformations for CIFAR-10
+    transform_train = transforms.Compose([
+        transforms.Resize(args.input_size),  # Resize CIFAR-10 images to 224x224
+        transforms.RandomCrop(args.input_size, padding=4),  # Add padding and crop
+        transforms.RandomHorizontalFlip(),  # Random horizontal flip
+        transforms.ToTensor(),  # Convert images to tensors
+        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])  # CIFAR-10 normalization
+    ])
+
+    transform_val = transforms.Compose([
+        transforms.Resize(args.input_size),  # Resize CIFAR-10 images to 224x224
+        transforms.CenterCrop(args.input_size),  # Center crop
+        transforms.ToTensor(),  # Convert images to tensors
+        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])  # CIFAR-10 normalization
+    ])
+
+    # Load CIFAR-10 dataset
+    dataset_train = CIFAR10(root=args.data_path, train=True, transform=transform_train, download=True)
+    dataset_val = CIFAR10(root=args.data_path, train=False, transform=transform_val, download=True)
+
+    print(f"Loaded CIFAR-10 training dataset: {len(dataset_train)} samples")
+    print(f"Loaded CIFAR-10 validation dataset: {len(dataset_val)} samples")
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -175,7 +202,7 @@ def main(args):
     if misc.is_main_process():
         print("Model = %s" % str(model_without_ddp))
 
-    # define ema model
+    # define ema (Exponential Moving Average) model
     model_ema = None
     teacher_model = None
     if args.use_ema_model:
@@ -201,6 +228,7 @@ def main(args):
         teacher_model.to(device)
         teacher_model.eval()
 
+    # calculate effective batch size
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
     
     if args.lr is None:  # only base_lr is specified
@@ -213,19 +241,23 @@ def main(args):
     print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], 
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.cpu], 
         find_unused_parameters=True)
         model_without_ddp = model.module
     
     # following timm: set wd as 0 for bias and norm layers
+    # prepare optimizer
     param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
+
+    # define the mixed precision scaler
     if args.not_use_fp16:
         loss_scaler = None
     else:
         loss_scaler = NativeScaler()
-
+    
+    # load checkpoint if specified
     ckpt_path = os.path.join(args.output_dir, f"{args.model}.{args.experiment}.temp.pth")
     if not os.path.isfile(ckpt_path):
         print("Checkpoint not founded in {}, train from random initialization".format(ckpt_path))
@@ -235,6 +267,7 @@ def main(args):
         misc.load_model(args=args, ckpt_path=ckpt_path, model_without_ddp=model, model_ema=model_ema_state_dict,
             optimizer=optimizer, loss_scaler=loss_scaler)
 
+    # initialize the log writer
     if global_rank == 0:
         log_dir = os.path.join(args.log_dir, f"{args.model}.{args.experiment}")
         os.makedirs(log_dir, exist_ok=True)
@@ -247,6 +280,8 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
+
+        # train for one epoch
         train_stats = train_one_epoch(
             model, data_loader_train,
             optimizer, device, epoch, loss_scaler, args.clip_grad,
@@ -254,6 +289,7 @@ def main(args):
             args=args, model_ema=model_ema,teacher_model=teacher_model,
         )
 
+        # save a temporary checkpoint
         save_dict = {
             "epoch": epoch + 1,
             "state_dict": model.state_dict(),
@@ -265,6 +301,7 @@ def main(args):
         if model_ema is not None:
             save_dict['ema_state_dict'] = model_ema.ema.state_dict()
 
+        #save periodic checkpoints
         ckpt_path = os.path.join(args.output_dir, f"{args.model}.{args.experiment}.temp.pth")
         misc.save_on_master(save_dict, ckpt_path)
         print(f"model_path: {ckpt_path}")
@@ -273,6 +310,7 @@ def main(args):
             ckpt_path = os.path.join(args.output_dir, "{}.{}.{:04d}.pth".format(args.model, args.experiment, epoch+1))
             misc.save_on_master(save_dict, ckpt_path)
 
+        # log stats for the epoch
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()}, 'epoch': epoch, }
 
         if args.output_dir and misc.is_main_process():
@@ -281,6 +319,7 @@ def main(args):
             with open(os.path.join(args.output_dir,"{}.{}.log.txt".format(args.model,args.experiment)), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
 
+    # training complete 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))

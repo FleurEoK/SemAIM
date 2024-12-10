@@ -89,8 +89,8 @@ python -m torch.distributed.launch --nproc_per_node 8 --nnodes 4 --node_rank 0 \
     --gaussian_kernel_size 9 --gaussian_sigma 1 --norm_pix_loss \
     --permutation_type attention_center --attention_type cls \
     --blr 2e-4 --warmup_epochs 30 --weight_decay 0.05 --clip_grad 3 \
-    --data_path <imagenet-path> --output_dir <output-directory> \
-    --log_dir <log-directory --experiment exp0 \
+    --data_path 'C:/Users/ensin/OneDrive/Documenten/Universiteit/Thesis/cifar_alt' --output_dir './output' \
+    --log_dir <log-directory --experiment exp0 \ 
 ```
 
 ### Finetune

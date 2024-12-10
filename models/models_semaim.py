@@ -25,7 +25,7 @@ class AimViT(nn.Module):
 
     def __init__(self,
                  # vision transformer backbone
-                 img_size=224, patch_size=16, in_chans=3,
+                 img_size=32, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16, drop_path_rate=0., out_dim=768,
                  mlp_ratio=4., norm_layer=partial(nn.LayerNorm, eps=1e-6),
                  # aim
@@ -616,11 +616,11 @@ def aim_huge(**kwargs):
 
 if __name__ == '__main__':
     torch.manual_seed(2023)
-    model = aim_base(img_size=224,  norm_pix_loss=False,
+    model = aim_base(img_size=32,  norm_pix_loss=False,
                       permutation_type='attention_center',
                       prediction_head_type='MLP', loss_type='L2',
                       query_depth=12, share_weight=False,
                       gaussian_kernel_size=9, gaussian_sigma=1)
     model.eval()
-    x = torch.rand(1, 3, 224, 224)
+    x = torch.rand(1, 3, 32, 32)
     print(model(x))
