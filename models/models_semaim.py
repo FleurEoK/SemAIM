@@ -18,7 +18,7 @@ from util.blocks import Block_SelfMask, Block_SelfCrossMask
 class AimViT(nn.Module):
     """
     Pretrain vision transformer backbone with AIM
-    parall encoder-decoder architecture
+    parallel encoder-decoder architecture
     Modified by sky: use the blocks in ViT (+ mask) for encoders, which is more convinent for finetune, linear
     modify the permutation form stochastic mask to center-out mask
     """
@@ -38,7 +38,7 @@ class AimViT(nn.Module):
                  loss_type='L2', predict_feature='none', norm_pix_loss=True):
         super().__init__()
 
-        # patch embedding
+        # patch embedding layer
         self.patch_embed = PatchEmbed(img_size, patch_size, in_chans, embed_dim)
         num_patches = self.patch_embed.num_patches
         self.patch_size = patch_size
@@ -46,16 +46,16 @@ class AimViT(nn.Module):
         # cls token
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
-        # position embedding
+        # position embeddings for patches
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
 
-        # encoder
+        # encoder: uses blocks with self masking from blocks.py
         self.blocks = nn.ModuleList([
             Block_SelfMask(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer, drop_path=dpr[i])
             for i in range(depth)])
 
-        # decoder
+        # decoder: uses blocks with cross-masking from blocks.py
         if share_weight:
             self.query_blocks = self.blocks
         else:
@@ -65,10 +65,10 @@ class AimViT(nn.Module):
         self.depth = depth
         self.step = depth // query_depth
 
-        # permutation type
+        # permutation type (e.g. stochastic masking or center-out masking)
         self.permutation_type = permutation_type
 
-        # prediction head
+        # prediction head to map latent features back to pixel spaces
         self.norm = norm_layer(embed_dim)
         self.predict_feature = predict_feature
         self.attention_type = attention_type
@@ -124,7 +124,7 @@ class AimViT(nn.Module):
         self.initialize_weights()
 
     def initialize_weights(self):
-        # initialization
+
         # initialize (and freeze) pos_embed by sin-cos embedding
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches ** .5),
                                             cls_token=True)
@@ -134,6 +134,7 @@ class AimViT(nn.Module):
         w = self.patch_embed.proj.weight.data
         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
+        # initialize cls_token
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         torch.nn.init.normal_(self.cls_token, std=.02)
 
@@ -303,6 +304,7 @@ class AimViT(nn.Module):
     def generate_attention_mask(self, x, attention_maps=None):
         """
         Generate permutation mask(content mask and query mask)
+        #padding mask for content and query 
        """
         N, L, D = x.shape  # batch, length, dim
 
