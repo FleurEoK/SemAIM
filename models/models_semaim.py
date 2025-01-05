@@ -95,7 +95,7 @@ class AimViT(nn.Module):
 
         # spilit matrix for guided center permutation
         num_patch = img_size // patch_size
-        split_matrix = torch.zeros((num_patch, 2, 4))
+        split_matrix = torch.zeros((14, 2, 4))  # Ensure enough rows for all assignments
         split_matrix[0, :, :] = torch.tensor([[0, 0, 0, 0], [2, 6, 10, 13]])
         split_matrix[1, :, :] = torch.tensor([[0, 0, 0, 0], [2, 6, 10, 13]])
         split_matrix[2, :, :] = torch.tensor([[0, 0, 0, 0], [2, 6, 10, 13]])

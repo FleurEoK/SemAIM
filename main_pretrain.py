@@ -39,7 +39,7 @@ def get_args_parser():
     # Model parameters
     parser.add_argument('--model', default='aim_base', type=str, metavar='MODEL',
                         help='Name of model to train')
-    parser.add_argument('--input_size', default=224, type=int,
+    parser.add_argument('--input_size', default=32, type=int,
                         help='images input size')
 
     parser.add_argument('--query_depth', default=12, type=int,
