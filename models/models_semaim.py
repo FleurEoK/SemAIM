@@ -354,6 +354,7 @@ class AimViT(nn.Module):
         mask_g = torch.cat((left_padding, mask_g), dim=2)
         return mask_h.unsqueeze(1), mask_g.unsqueeze(1), permutation
 
+
     def forward_aim(self, x, attention_maps=None):
 
         # embed patches

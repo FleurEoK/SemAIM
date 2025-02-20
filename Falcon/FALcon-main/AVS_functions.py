@@ -67,6 +67,28 @@ def extract_and_resize_glimpses_for_batch(images, glimpses_locs_dims, resized_he
 
 
 def cut_and_mask_glimpses_for_batch(images, glimpses_locs_dims):
+    """
+    Extracts and masks glimpses from a batch of images based on provided locations and dimensions.
+
+    This function cuts out specified regions (glimpses) from each image in the batch and
+    creates a new batch of images where only these glimpses are visible, with the rest of
+    the image masked (set to zero).
+
+    Parameters:
+    -----------
+    images : torch.Tensor
+        A batch of input images. Expected shape: [batch_size, channels, height, width].
+    glimpses_locs_dims : torch.Tensor
+        Locations and dimensions of glimpses for each image in the batch.
+        Expected shape: [batch_size, 4], where each row contains
+        [left, top, width, height] of the glimpse.
+
+    Returns:
+    --------
+    torch.Tensor
+        A batch of images with only the specified glimpses visible and the rest masked.
+        Has the same shape as the input 'images' tensor.
+    """
     to_round = False if 'int' in str(glimpses_locs_dims.dtype) else True
     if to_round:
         left_coords     = torch.round(glimpses_locs_dims[:, 0]).int()
@@ -80,7 +102,7 @@ def cut_and_mask_glimpses_for_batch(images, glimpses_locs_dims):
         heights         = glimpses_locs_dims[:, 3]
     right_coords    = left_coords + widths
     bottom_coords   = top_coords + heights
-    
+
     batch_cut_and_masked_glimpses = torch.zeros_like(images)
     for img_id, (left, top, right, bottom) in enumerate(zip(left_coords, top_coords, right_coords, bottom_coords)):
         batch_cut_and_masked_glimpses[img_id, :, top:bottom, left:right] = images[img_id, :, top:bottom, left:right]

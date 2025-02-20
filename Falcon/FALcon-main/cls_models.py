@@ -3,6 +3,21 @@ import torchvision
 import torch.nn as nn
 
 def copy_parameters(model, pretrained_dict):
+    """
+    Copy parameters from a pretrained model to the target model.
+
+    This function copies parameters from a pretrained model dictionary to the target model,
+    handling cases where the pretrained model might have been trained in parallel (with 'module' prefix).
+    It ensures that only matching parameters (by name and size) are copied.
+
+    Args:
+        model (torch.nn.Module): The target model to which parameters will be copied.
+        pretrained_dict (dict): A state_dict containing pretrained model parameters.
+
+    Returns:
+        torch.nn.Module: The updated model with copied parameters.
+
+    """
     model_dict = model.state_dict()
 
     if 'module' in list(pretrained_dict.keys())[0]:
