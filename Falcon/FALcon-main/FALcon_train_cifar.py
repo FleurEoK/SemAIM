@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Jul 25 17:54:36 2022
-
-@author: tibrayev
+cifar-10 training script for FALcon model
 """
 
 import os
@@ -21,7 +19,7 @@ np.set_printoptions(linewidth = 160)
 np.set_printoptions(precision=4)
 np.set_printoptions(suppress='True')
 
-from FALcon_config_cub import FALcon_config
+from FALcon_config_cifar import FALcon_config
 from FALcon_models_vgg import customizable_VGG as custom_vgg
 from utils.utils_dataloaders import get_dataloaders
 from utils.utils_custom_tvision_functions import plot_curve, imshow, plotregions, plotspots, plotspots_at_regioncenters, region_iou, region_area
@@ -44,8 +42,16 @@ torch.backends.cudnn.benchmark = False
 
 
 # Dataloaders
-train_loader, loss_weights    = get_dataloaders(config_3, loader_type=config_3.train_loader_type)
-valid_loader                  = get_dataloaders(config_3, loader_type='test')
+if config_3.train_loader_type == 'train_and_val':
+	train_loader, valid_loader    = get_dataloaders(config_3, loader_type=config_3.train_loader_type)
+elif config_3.train_loader_type == 'train':
+	train_loader = get_dataloaders(config_3, loader_type=config_3.train_loader_type)
+	valid_loader = get_dataloaders(config_3, loader_type=config_3.valid_loader_type)
+else:
+	raise ValueError("Unrecognized train_loader_type for ImageNet dataset train script!")	
+# This training script supports only single bounding box. Hence, need to turn off multiple bbox fetching.
+train_loader.dataset.fetch_one_bbox = True
+valid_loader.dataset.fetch_one_bbox = True
 
 # Loss(es)
 bce_loss                      = nn.BCEWithLogitsLoss()
@@ -75,7 +81,6 @@ log_dict     = {'train_loss':[],
                 'train_acc_correct_class':[],
                 'train_acc_localization':[],
                 'train_acc_class_localized':[],
-                'train_acc_switching':[],
                 'test_loss':[],
                 'test_loss_classification': [],
                 'test_loss_glimpse_dim_change': [],
@@ -83,7 +88,6 @@ log_dict     = {'train_loss':[],
                 'test_acc_correct_class':[],
                 'test_acc_localization':[],
                 'test_acc_class_localized':[],
-                'test_acc_switching':[]
                 }
 if not os.path.exists(config_3.save_dir): os.makedirs(config_3.save_dir)
 
@@ -109,8 +113,8 @@ for epoch in range(0, config_3.epochs):
     train_ave_iou               = 0.0
     total_samples               = 0
     glimpses_locs_dims_array    = []
-    for i, (images, targets) in enumerate(train_loader):
-        translated_images, targets_classes, bbox_targets  = images.to(device), targets[0].to(device), targets[1].to(device)
+    for i, (images, targets, bboxes) in enumerate(train_loader):
+        translated_images, targets_classes, bbox_targets  = images.to(device), targets.to(device), bboxes.to(device)
 # =============================================================================
 #       DATA STRUCTURES to keep track of glimpses
 # =============================================================================
@@ -133,7 +137,7 @@ for epoch in range(0, config_3.epochs):
 # =============================================================================
 #       Getting initial glimpse locations        
 # =============================================================================
-        all_grid_cells_centers  = get_grid((config_3.full_wsxres_img_size[1], config_3.full_res_img_size[0]),
+        all_grid_cells_centers  = get_grid((config_3.full_res_img_size[1], config_3.full_res_img_size[0]),
                                             config_3.glimpse_size_grid, grid_center_coords=True).to(device)
 
         init_glimpses_in_bbox   = guess_TF_init_glimpses_for_batch(all_grid_cells_centers, bbox_targets, is_inside_bbox=True)
@@ -287,7 +291,6 @@ for epoch in range(0, config_3.epochs):
     log_dict['train_acc_correct_class'].append(100.*acc_correct_class/total_samples)
     log_dict['train_acc_localization'].append(100.*acc_localization/total_samples)
     log_dict['train_acc_class_localized'].append(100.*acc_class_localized/total_samples)
-    log_dict['train_acc_switching'].append(100.*acc_switching/total_samples)
     print("IoU@{}: Average: {:.3f} | TPR: {:.4f} [{}/{}]\n".format(
         config_3.iou_th, (train_ave_iou/total_samples),
         (1.*acc_localization/total_samples), acc_localization, total_samples))
@@ -310,8 +313,8 @@ for epoch in range(0, config_3.epochs):
     total_samples               = 0
     glimpses_locs_dims_array    = []
     with torch.no_grad():
-        for i, (images, targets) in enumerate(valid_loader):
-            translated_images, targets_classes, bbox_targets  = images.to(device), targets[0].to(device), targets[1].to(device)
+        for i, (images, targets, bboxes) in enumerate(valid_loader):
+            translated_images, targets_classes, bbox_targets  = images.to(device), targets.to(device), bboxes.to(device)
 # =============================================================================
 #       DATA STRUCTURES to keep track of glimpses
 # =============================================================================
@@ -493,7 +496,6 @@ for epoch in range(0, config_3.epochs):
     log_dict['test_acc_correct_class'].append(100.*acc_correct_class/total_samples)
     log_dict['test_acc_localization'].append(100.*acc_localization/total_samples)
     log_dict['test_acc_class_localized'].append(100.*acc_class_localized/total_samples)
-    log_dict['test_acc_switching'].append(100.*acc_switching/total_samples)
     print("IoU@{}: Average: {:.3f} | TPR: {:.4f} [{}/{}]\n".format(
         config_3.iou_th, (test_ave_iou/total_samples), 
         (1.*acc_localization/total_samples), acc_localization, total_samples))
